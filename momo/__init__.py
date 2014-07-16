@@ -1,5 +1,6 @@
 from bson.objectid import ObjectId
 import math
+from datetime import datetime
 
 
 class ObjectNotFound(Exception):
@@ -10,6 +11,7 @@ class ModelException(Exception):
 
 class Model(dict):
     collection = None
+    structure = {}
 
     @classmethod
     def find_by_id(cls, object_id):
@@ -39,21 +41,39 @@ class Model(dict):
 
     @classmethod
     def create(cls, data):
+        data['created'] = data['updated'] = datetime.utcnow()
         _id = cls.collection.insert(data)
         obj = cls.collection.find_one({'_id':_id})
         return cls(obj)
 
     @classmethod
     def get_or_create(cls, query, data):
-        if cls.find(query).count():
+        try:
             return cls.find_one(query)
+        except ObjectNotFound:
+            _id = cls.collection.insert(data)
+            obj = cls.collection.find_one({'_id':_id})
+            return cls(obj)
 
-        _id = cls.collection.insert(data)
-        obj = cls.collection.find_one({'_id':_id})
-        return cls(obj)
+    @classmethod
+    def create_or_update(cls, query, data):
+        try:
+            obj = cls.find_one(query)
+            obj.update(data)
+            obj.save()
+            return obj
+        except ObjectNotFound:
+            _id = cls.collection.insert(data)
+            obj = cls.collection.find_one({'_id':_id})
+            return cls(obj)
+
 
     def save(self):
+        self['updated'] = datetime.utcnow()
         self.collection.save(self)
+
+    def delete(self):
+        self.collection.remove(self._id)
 
     def __getattr__(self, name):
         return self[name]
